@@ -39,17 +39,33 @@ const userController = {
     res.redirect('/signin')
   },
   getUser: (req, res, next) => {
-    return User.findByPk(req.params.id, {
-      include: [
-        { model: Comment, include: Restaurant }
-      ],
-      order: [
-        [Comment, 'createdAt', 'desc']
-      ]
-    })
-      .then(targetUser => {
+    return Promise.all([
+      User.findByPk(req.params.id, {
+        include: [
+          { model: User, as: 'Followers' },
+          { model: User, as: 'Followings' },
+          { model: Restaurant, as: 'FavoritedRestaurants' }
+        ],
+        order: [['createdAt', 'desc']]
+      }),
+      Comment.findAll({
+        include: [Restaurant],
+        where: { userId: req.params.id },
+        order: [['createdAt', 'desc']],
+        group: 'restaurant_id',
+        raw: true,
+        nest: true
+      })
+    ])
+      .then(([targetUser, comments]) => {
         if (!targetUser) throw new Error("User didn't exist!")
-        res.render('users/profile', { user: getUser(req), targetUser: targetUser.toJSON() })
+        const isFollowed = req.user.Followings.some(f => f.id === targetUser.id)
+        res.render('users/profile', {
+          user: getUser(req),
+          targetUser: targetUser.toJSON(),
+          comments,
+          isFollowed
+        })
       })
       .catch(err => next(err))
   },
